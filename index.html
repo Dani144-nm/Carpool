@@ -435,61 +435,42 @@ function jsonpRequest(url, timeoutMs=10000) {
 
 function sheetsLoad() {
   if (!CONFIG.SCRIPT_URL) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const cbName = 'cp_load_' + Date.now();
-    const timeout = setTimeout(() => {
-      delete window[cbName];
-      script.remove();
-      console.error('sheetsLoad timeout');
-      resolve(null);
-    }, 15000);
-    window[cbName] = (data) => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      resolve(data || null);
-    };
-    const script = document.createElement('script');
-    script.src = CONFIG.SCRIPT_URL + '?action=load&callback=' + cbName;
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      console.error('sheetsLoad script error');
-      resolve(null);
-    };
-    document.head.appendChild(script);
-  });
+  const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + CONFIG.SCRIPT_URL + '?action=load';
+  return fetch(proxyUrl)
+    .then(res => res.text())
+    .then(text => {
+      try {
+        return JSON.parse(text);
+      } catch(e) {
+        console.error('Parse error:', e);
+        return null;
+      }
+    })
+    .catch(e => {
+      console.error('sheetsLoad error:', e);
+      return null;
+    });
 }
 
 function sheetsSave(stateToSave) {
   if (!CONFIG.SCRIPT_URL) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const cbName = 'cp_save_' + Date.now();
-    const timeout = setTimeout(() => {
-      delete window[cbName];
-      script.remove();
-      console.error('sheetsSave timeout');
-      resolve(false);
-    }, 15000);
-    window[cbName] = (data) => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      resolve(data && data.ok === true);
-    };
-    const encoded = encodeURIComponent(JSON.stringify(stateToSave));
-    const script = document.createElement('script');
-    script.src = CONFIG.SCRIPT_URL + '?action=save&data=' + encoded + '&callback=' + cbName;
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      console.error('sheetsSave script error');
-      resolve(false);
-    };
-    document.head.appendChild(script);
-  });
+  const encoded = encodeURIComponent(JSON.stringify(stateToSave));
+  const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + CONFIG.SCRIPT_URL + '?action=save&data=' + encoded;
+  return fetch(proxyUrl)
+    .then(res => res.text())
+    .then(text => {
+      try {
+        const data = JSON.parse(text);
+        return data && data.ok === true;
+      } catch(e) {
+        console.error('Parse error:', e);
+        return false;
+      }
+    })
+    .catch(e => {
+      console.error('sheetsSave error:', e);
+      return false;
+    });
 }
 
 function syncNow() {
