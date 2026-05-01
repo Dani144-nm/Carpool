@@ -345,9 +345,9 @@ input:focus, select:focus { border-color: var(--accent); }
 // CONFIG — modifica questi valori
 // ============================================================
 const CONFIG = {
-  GROUP_NAME: 'Il mio gruppo',       // Nome visualizzato
-  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycby7ZW9FsQwAP91OJ_NLNySUo_6eaeDHBlGuHHsXcd-FkFH70DjmrARq4QX8ukrr-fkI0A/exec',                     // URL del tuo Apps Script Web App
-  // Se SCRIPT_URL è vuoto, funziona solo in locale
+  GROUP_NAME: 'Il mio gruppo',
+  SUPABASE_URL: 'https://yshxfognymfferttcxft.supabase.co',  // ← Incolla qui
+  SUPABASE_KEY: 'sb_publishable_KKjxXSuAVhaSBwleKZ2N0g_Q9ilOFd0',                     // ← E qui
 };
 // ============================================================
 
@@ -434,17 +434,19 @@ function jsonpRequest(url, timeoutMs=10000) {
 }
 
 function sheetsLoad() {
-  if (!CONFIG.SCRIPT_URL) return Promise.resolve(null);
-  const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + CONFIG.SCRIPT_URL + '?action=load';
-  return fetch(proxyUrl)
-    .then(res => res.text())
-    .then(text => {
-      try {
-        return JSON.parse(text);
-      } catch(e) {
-        console.error('Parse error:', e);
-        return null;
+  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY) return Promise.resolve(null);
+  return fetch(CONFIG.SUPABASE_URL + '/rest/v1/carpool_data?id=eq.1&select=data', {
+    headers: {
+      'apikey': CONFIG.SUPABASE_KEY,
+      'Authorization': 'Bearer ' + CONFIG.SUPABASE_KEY
+    }
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data && data[0] && data[0].data) {
+        return data[0].data;
       }
+      return null;
     })
     .catch(e => {
       console.error('sheetsLoad error:', e);
@@ -453,20 +455,18 @@ function sheetsLoad() {
 }
 
 function sheetsSave(stateToSave) {
-  if (!CONFIG.SCRIPT_URL) return Promise.resolve(false);
-  const encoded = encodeURIComponent(JSON.stringify(stateToSave));
-  const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + CONFIG.SCRIPT_URL + '?action=save&data=' + encoded;
-  return fetch(proxyUrl)
-    .then(res => res.text())
-    .then(text => {
-      try {
-        const data = JSON.parse(text);
-        return data && data.ok === true;
-      } catch(e) {
-        console.error('Parse error:', e);
-        return false;
-      }
-    })
+  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY) return Promise.resolve(false);
+  return fetch(CONFIG.SUPABASE_URL + '/rest/v1/carpool_data?id=eq.1', {
+    method: 'PATCH',
+    headers: {
+      'apikey': CONFIG.SUPABASE_KEY,
+      'Authorization': 'Bearer ' + CONFIG.SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({ data: stateToSave })
+  })
+    .then(res => res.ok || res.status === 204)
     .catch(e => {
       console.error('sheetsSave error:', e);
       return false;
@@ -474,7 +474,7 @@ function sheetsSave(stateToSave) {
 }
 
 function syncNow() {
-  if (!CONFIG.SCRIPT_URL) { showToast('Nessun Script URL configurato', 'error'); return; }
+  if (!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY)) { showToast('Nessun Script URL configurato', 'error'); return; }
   setSyncStatus('saving', 'Sync...');
   sheetsLoad().then(data => {
     if (data && data.people !== undefined) {
@@ -493,7 +493,7 @@ function syncNow() {
 }
 
 function pushState() {
-  if (!CONFIG.SCRIPT_URL) { saveLocal(); return; }
+  if (!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY)) { saveLocal(); return; }
   if (isSaving) { saveLocal(); return; }
   isSaving = true;
   setSyncStatus('saving', 'Salvo...');
@@ -510,7 +510,7 @@ function pushState() {
 }
 
 function forcePush() {
-  if (!CONFIG.SCRIPT_URL) { showToast('Nessun Script URL configurato', 'error'); return; }
+  if (!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY)) { showToast('Nessun Script URL configurato', 'error'); return; }
   setSyncStatus('saving', 'Carico...');
   sheetsSave({ people: state.people, rides: state.rides }).then(ok => {
     if (ok) { setSyncStatus('ok', 'Caricato ✓'); showToast('Dati caricati su Sheets!'); }
@@ -920,7 +920,7 @@ function renderPersone() {
   });
   document.getElementById('archived-card').style.display = archived.length?'block':'none';
   document.getElementById('info-group-name').textContent  = CONFIG.GROUP_NAME;
-  document.getElementById('info-script-url').textContent  = CONFIG.SCRIPT_URL || '(non configurato)';
+  document.getElementById('info-script-url').textContent  = (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) || '(non configurato)';
 }
 
 function renderColorPalette() {
@@ -1049,7 +1049,7 @@ function init() {
   renderAll();
   document.getElementById('loading-overlay').style.display = 'none';
 
-  if (CONFIG.SCRIPT_URL) {
+  if ((CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY)) {
     setSyncStatus('saving', 'Carico...');
     sheetsLoad().then(data => {
       if (data && (data.people !== undefined || data.rides !== undefined)) {
@@ -1091,7 +1091,7 @@ document.addEventListener('DOMContentLoaded', init);
 ║     Esegui come: Me                                          ║
 ║     Chi ha accesso: Chiunque                                 ║
 ║  6. Autorizza e copia l'URL                                  ║
-║  7. Incolla l'URL in CONFIG.SCRIPT_URL sopra                 ║
+║  7. Incolla l'URL in (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) sopra                 ║
 ║                                                              ║
 ║  ── CODICE Apps Script (Code.gs) — NUOVO ──────────────────  ║
 ║  (sostituisci tutto il vecchio Code.gs con questo)           ║
