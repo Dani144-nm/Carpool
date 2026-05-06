@@ -114,7 +114,7 @@ input:focus,select:focus{border-color:var(--accent)}
 .person-stat-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--border)}
 .person-stat-row:last-child{border-bottom:none}
 .psr-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
-.psr-name{flex:1;font-size:0.88rem;font-weight:600}
+.psr-name{flex:1;font-size:0.88rem;font-weight:600;display:flex;flex-direction:column;gap:1px}
 .psr-pct{font-size:0.88rem;font-weight:700}
 .psr-bar-wrap{width:72px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
 .psr-bar{height:100%;border-radius:3px;transition:width 0.5s}
@@ -155,7 +155,7 @@ input:focus,select:focus{border-color:var(--accent)}
 
 <!-- ONBOARDING -->
 <div id="onboarding">
-  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.0db</span></div>
+  <div class="ob-logo">Car<span>Pool</span></div>
   <div class="ob-sub">Gestione carpooling tra colleghi</div>
   <div class="ob-card">
     <div class="ob-tabs">
@@ -194,7 +194,7 @@ input:focus,select:focus{border-color:var(--accent)}
 <div id="app">
   <header class="app-header">
     <div class="header-logo">
-      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.0db</span>
+      Car<span>Pool</span>
       <span class="header-group" id="header-group-code"></span>
     </div>
     <div id="sync-badge" class="sync-badge sync-off" onclick="syncNow()" title="Sincronizza">
@@ -863,7 +863,15 @@ function renderStatistiche() {
     const s=stats[p.id];
     const pct=s.present>0?Math.round(s.drives/s.present*100):0;
     const col=Math.abs(pct-fairAvg)<10?'#3ecf74':pct<fairAvg?'#4f8ef7':'#f75a5a';
-    tHtml+=`<div class="person-stat-row"><div class="psr-dot" style="background:${p.color}"></div><div class="psr-name">${p.name}</div><div class="psr-bar-wrap"><div class="psr-bar" style="width:${Math.min(pct,100)}%;background:${col}"></div></div><div class="psr-pct" style="color:${col}">${pct}%</div></div>`;
+    tHtml+=`<div class="person-stat-row">
+      <div class="psr-dot" style="background:${p.color}"></div>
+      <div class="psr-name">
+        <div>${p.name}</div>
+        <div style="font-size:0.68rem;color:var(--text2);font-weight:400">${s.drives} guide · ${s.present} presenze</div>
+      </div>
+      <div class="psr-bar-wrap"><div class="psr-bar" style="width:${Math.min(pct,100)}%;background:${col}"></div></div>
+      <div class="psr-pct" style="color:${col}">${pct}%</div>
+    </div>`;
   });
   document.getElementById('stats-table').innerHTML=tHtml;
   document.getElementById('fair-note').textContent=`Media equa: ~${Math.round(fairAvg)}% delle giornate presenti`;
@@ -880,6 +888,7 @@ function renderPersone() {
   active.forEach(p=>{
     const row=document.createElement('div'); row.className='person-row';
     row.innerHTML=`<div class="person-name"><div style="width:9px;height:9px;border-radius:50%;background:${p.color}"></div>${p.name}</div>
+      <button class="btn btn-xs btn-ghost" onclick="renamePerson('${p.id}')">✏</button>
       <button class="btn btn-xs" style="background:rgba(247,90,90,0.12);color:var(--red);border:1px solid rgba(247,90,90,0.3)" onclick="archivePerson('${p.id}')">Rimuovi</button>`;
     aList.appendChild(row);
   });
@@ -928,6 +937,15 @@ function deletePerson(id) {
   const p=getPersonById(id); if(!p)return;
   if(!confirm(`Eliminare definitivamente ${p.name}?`))return;
   state.people=state.people.filter(x=>x.id!==id); renderAll(); showToast('Eliminato'); pushState();
+}
+function renamePerson(id) {
+  const p=getPersonById(id); if(!p)return;
+  const newName=prompt('Nuovo nome per '+p.name+':', p.name);
+  if(!newName||!newName.trim()) return;
+  const trimmed=newName.trim();
+  const existing=getPersonByName(trimmed);
+  if(existing&&existing.id!==id){ showToast('Nome già esistente','error'); return; }
+  p.name=trimmed; renderAll(); showToast('Rinominato!'); pushState();
 }
 function copyCode() { navigator.clipboard.writeText(groupCode).then(()=>showToast('Codice copiato!')).catch(()=>showToast(groupCode,'info')); }
 function renameGroup() {
