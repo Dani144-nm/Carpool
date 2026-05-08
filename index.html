@@ -126,6 +126,9 @@ input:focus,select:focus{border-color:var(--accent)}
 .color-palette{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all 0.15s}
 .color-swatch.selected{border-color:#fff;transform:scale(1.15)}
+.color-picker-inline{display:flex;flex-wrap:wrap;gap:5px;padding:8px;background:var(--bg);border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border)}
+.color-swatch-sm{width:20px;height:20px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all 0.15s;flex-shrink:0}
+.color-swatch-sm.selected{border-color:#fff;transform:scale(1.2)}
 .group-code-big{font-size:1.8rem;font-weight:800;letter-spacing:4px;color:var(--accent);text-align:center;padding:10px;background:var(--bg);border-radius:var(--radius-sm);margin:8px 0}
 
 /* MODAL */
@@ -155,7 +158,7 @@ input:focus,select:focus{border-color:var(--accent)}
 
 <!-- ONBOARDING -->
 <div id="onboarding">
-  <div class="ob-logo">Car<span>Pool</span></div>
+  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.0db</span></div>
   <div class="ob-sub">Gestione carpooling tra colleghi</div>
   <div class="ob-card">
     <div class="ob-tabs">
@@ -194,7 +197,7 @@ input:focus,select:focus{border-color:var(--accent)}
 <div id="app">
   <header class="app-header">
     <div class="header-logo">
-      Car<span>Pool</span>
+      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.0db</span>
       <span class="header-group" id="header-group-code"></span>
     </div>
     <div id="sync-badge" class="sync-badge sync-off" onclick="syncNow()" title="Sincronizza">
@@ -245,11 +248,16 @@ input:focus,select:focus{border-color:var(--accent)}
     <div id="tab-statistiche" class="tab-panel">
       <div class="stats-grid" id="stats-overview"></div>
       <div class="card">
-        <div class="card-title">% Guide / Presenze</div>
+        <div class="card-title">% Guide / Presenze — totale</div>
         <div class="chart-wrap"><canvas id="chart-bar"></canvas></div>
         <div class="divider"></div>
         <div id="stats-table"></div>
         <div class="mt-8 text-muted" id="fair-note"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📈 Andamento nel tempo</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chart-line"></canvas></div>
+        <div id="line-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
       </div>
     </div>
 
@@ -337,6 +345,7 @@ let todayCars  = [];
 let absentToday = [];
 let filterPerson = null;
 let barChart   = null;
+let lineChart  = null;
 let editRideData = null;
 let editRideIndex = -1;
 let pastRideData = null;
@@ -689,10 +698,20 @@ function renderStorico() {
       return `<span style="color:${drv?.color||'var(--text)'}">${drv?.name||'?'}</span>${pass?' + '+pass:''}`;
     }).join(' | ');
     const absHtml = ride.absent?.length ? `<div class="text-muted" style="margin-top:3px">Assenti: ${ride.absent.map(pid=>getPersonById(pid)?.name||'?').join(', ')}</div>` : '';
+    // Contatori
+    const nDrivers = ride.cars.filter(c=>c.driver).length;
+    const nPass = ride.cars.reduce((acc,c)=>acc+c.passengers.length, 0);
+    const nAbs = ride.absent?.length||0;
+    const badgesHtml = `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,0.12);color:var(--accent);font-weight:600">🚗 ${nDrivers} guid.</span>
+      <span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:rgba(62,207,116,0.12);color:var(--green);font-weight:600">👥 ${nPass} pass.</span>
+      ${nAbs>0?`<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:rgba(247,90,90,0.12);color:var(--red);font-weight:600">✗ ${nAbs} ass.</span>`:''}
+    </div>`;
     div.innerHTML = `
       <div class="ride-date">${fmtDate(ride.date)}</div>
       <div class="ride-cars-row">${carsHtml}</div>
       ${absHtml}
+      ${badgesHtml}
       <div class="ride-actions">
         <button class="btn btn-ghost btn-xs" onclick="openEditRide(${idx})">✏ Modifica</button>
         <button class="btn btn-xs" style="background:rgba(247,90,90,0.15);color:var(--red);border:1px solid rgba(247,90,90,0.3)" onclick="deleteRide(${idx})">🗑 Elimina</button>
@@ -817,9 +836,9 @@ function computeStats() {
   const active=getActivePeople(); const s={};
   active.forEach(p=>{ s[p.id]={drives:0,present:0}; });
   state.rides.forEach(ride=>{
+    // Presenti = solo chi ha guidato o era passeggero (NON gli assenti)
     const inR=new Set();
     ride.cars.forEach(c=>{ if(c.driver)inR.add(c.driver); c.passengers.forEach(p=>inR.add(p)); });
-    if(ride.absent)ride.absent.forEach(p=>inR.add(p));
     ride.cars.forEach(c=>{ if(c.driver&&s[c.driver]!==undefined)s[c.driver].drives++; });
     inR.forEach(pid=>{ if(s[pid]!==undefined)s[pid].present++; });
   });
@@ -835,7 +854,6 @@ function renderStatistiche() {
   state.rides.forEach(ride=>{
     const inR=new Set();
     ride.cars.forEach(c=>{if(c.driver)inR.add(c.driver);c.passengers.forEach(p=>inR.add(p));});
-    if(ride.absent)ride.absent.forEach(p=>inR.add(p));
     const nP=inR.size,nC=ride.cars.filter(c=>c.driver).length;
     if(nP>0){tf+=nC/nP;cf++;}
   });
@@ -875,6 +893,74 @@ function renderStatistiche() {
   });
   document.getElementById('stats-table').innerHTML=tHtml;
   document.getElementById('fair-note').textContent=`Media equa: ~${Math.round(fairAvg)}% delle giornate presenti`;
+  buildLineChart(active);
+}
+
+function buildLineChart(active) {
+  if(lineChart){lineChart.destroy();lineChart=null;}
+  if(!state.rides.length||!active.length) return;
+
+  // Ordina le giornate cronologicamente
+  const sorted = [...state.rides].sort((a,b)=>a.date.localeCompare(b.date));
+
+  // Per ogni persona calcola la % cumulativa guida/presenze giornata per giornata
+  const datasets = active.map(p => {
+    let drives=0, present=0;
+    const pts = sorted.map(ride=>{
+      const inR=new Set();
+      ride.cars.forEach(c=>{if(c.driver)inR.add(c.driver);c.passengers.forEach(x=>inR.add(x));});
+      if(inR.has(p.id)) present++;
+      const drove = ride.cars.some(c=>c.driver===p.id);
+      if(drove) drives++;
+      return present>0 ? Math.round(drives/present*100) : null;
+    });
+    return {
+      label: p.name,
+      data: pts,
+      borderColor: p.color,
+      backgroundColor: p.color + '22',
+      borderWidth: 2,
+      pointRadius: sorted.length>30?0:3,
+      pointHoverRadius: 5,
+      tension: 0.3,
+      spanGaps: true
+    };
+  });
+
+  const labels = sorted.map(r=>{
+    const [y,m,d]=r.date.split('-');
+    return d+'/'+m;
+  });
+
+  const ctx2 = document.getElementById('chart-line').getContext('2d');
+  lineChart = new Chart(ctx2,{
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label: c=>c.dataset.label+': '+c.parsed.y+'%' } }
+      },
+      scales:{
+        y:{
+          min:0, max:100,
+          ticks:{callback:v=>v+'%',color:'#8b92a8'},
+          grid:{color:'rgba(42,47,62,0.8)'}
+        },
+        x:{ ticks:{color:'#8b92a8',maxRotation:45,maxTicksLimit:12}, grid:{display:false} }
+      }
+    }
+  });
+
+  // Legenda manuale
+  const legend = document.getElementById('line-legend');
+  legend.innerHTML = active.map(p=>`
+    <div style="display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:600">
+      <div style="width:18px;height:3px;border-radius:2px;background:${p.color}"></div>
+      ${p.name}
+    </div>`).join('');
 }
 
 // ==================== PERSONE ====================
@@ -887,9 +973,17 @@ function renderPersone() {
   aList.innerHTML='';
   active.forEach(p=>{
     const row=document.createElement('div'); row.className='person-row';
-    row.innerHTML=`<div class="person-name"><div style="width:9px;height:9px;border-radius:50%;background:${p.color}"></div>${p.name}</div>
+    row.style.flexWrap='wrap';
+    row.innerHTML=`
+      <div class="person-name" style="flex:1;min-width:0">
+        <div onclick="toggleColorPicker('${p.id}')" style="width:14px;height:14px;border-radius:50%;background:${p.color};cursor:pointer;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;transition:transform 0.15s" title="Cambia colore"></div>
+        ${p.name}
+      </div>
       <button class="btn btn-xs btn-ghost" onclick="renamePerson('${p.id}')">✏</button>
-      <button class="btn btn-xs" style="background:rgba(247,90,90,0.12);color:var(--red);border:1px solid rgba(247,90,90,0.3)" onclick="archivePerson('${p.id}')">Rimuovi</button>`;
+      <button class="btn btn-xs" style="background:rgba(247,90,90,0.12);color:var(--red);border:1px solid rgba(247,90,90,0.3)" onclick="archivePerson('${p.id}')">Rimuovi</button>
+      <div id="color-picker-${p.id}" class="color-picker-inline hidden" style="width:100%">
+        ${COLORS.map(c=>`<div class="color-swatch-sm${c===p.color?' selected':''}" style="background:${c}" onclick="changePersonColor('${p.id}','${c}')" title="${c}"></div>`).join('')}
+      </div>`;
     aList.appendChild(row);
   });
   if(!active.length)aList.innerHTML='<div class="text-muted">Nessuna persona attiva</div>';
@@ -946,6 +1040,21 @@ function renamePerson(id) {
   const existing=getPersonByName(trimmed);
   if(existing&&existing.id!==id){ showToast('Nome già esistente','error'); return; }
   p.name=trimmed; renderAll(); showToast('Rinominato!'); pushState();
+}
+function toggleColorPicker(id) {
+  // Chiudi tutti gli altri picker aperti
+  document.querySelectorAll('.color-picker-inline').forEach(el=>{
+    if(el.id!=='color-picker-'+id) el.classList.add('hidden');
+  });
+  const picker=document.getElementById('color-picker-'+id);
+  if(picker) picker.classList.toggle('hidden');
+}
+function changePersonColor(id, color) {
+  const p=getPersonById(id); if(!p)return;
+  p.color=color;
+  const picker=document.getElementById('color-picker-'+id);
+  if(picker) picker.classList.add('hidden');
+  renderAll(); pushState(); showToast('Colore aggiornato!');
 }
 function copyCode() { navigator.clipboard.writeText(groupCode).then(()=>showToast('Codice copiato!')).catch(()=>showToast(groupCode,'info')); }
 function renameGroup() {
