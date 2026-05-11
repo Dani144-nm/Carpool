@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="theme-color" content="#4f8ef7"/>
 <meta name="mobile-web-app-capable" content="yes"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://*.supabase.co; img-src 'self' data:; connect-src https://*.supabase.co;"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="CarPool"/>
@@ -335,6 +336,38 @@ const SUPABASE_URL = 'https://yshxfognymfferttcxft.supabase.co';   // https://xx
 const SUPABASE_KEY = 'sb_publishable_KKjxXSuAVhaSBwleKZ2N0g_Q9ilOFd0';   // anon public key
 // ============================================================
 
+// ============================================================
+// SICUREZZA
+// ============================================================
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+}
+function sanitizeName(raw, maxLen=40) {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw.replace(/[<>&"'`\\]/g,'').trim().slice(0, maxLen);
+}
+function secureUid6() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const arr = new Uint8Array(6);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => chars[b % chars.length]).join('');
+}
+const _rl = { last: 0, q: null };
+function rateLimitedSave(fn) {
+  if (_rl.q) clearTimeout(_rl.q);
+  const wait = Math.max(0, 1500 - (Date.now() - _rl.last));
+  _rl.q = setTimeout(() => { _rl.last = Date.now(); _rl.q = null; fn(); }, wait);
+}
+function validatePayload(data) {
+  if (JSON.stringify(data).length > 500000) {
+    showToast('Dati troppo grandi per la sincronizzazione', 'error');
+    return false;
+  }
+  return true;
+}
+// ============================================================
+
 const COLORS = ['#4f8ef7','#3ecf74','#f75a5a','#f7c948','#b57bf7','#f77a4f','#4fd6f7','#f74fc0','#94f74f','#f74f74'];
 const LS_KEY  = 'cp_session';
 
@@ -444,15 +477,19 @@ function syncNow() {
 
 function pushState() {
   saveLocal();
-  if (!SUPABASE_URL || !SUPABASE_KEY || isSaving) return;
-  isSaving = true;
-  setSyncStatus('saving','Salvo...');
-  sbSave(groupCode, { people: state.people, rides: state.rides, groupName: state.groupName })
-    .then(ok => {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return;
+  const payload = { people: state.people, rides: state.rides, groupName: state.groupName };
+  if (!validatePayload(payload)) return;
+  rateLimitedSave(() => {
+    if (isSaving) return;
+    isSaving = true;
+    setSyncStatus('saving','Salvo...');
+    sbSave(groupCode, payload).then(ok => {
       isSaving = false;
       setSyncStatus(ok ? 'ok' : 'err', ok ? 'Salvato ✓' : 'Errore');
       if (!ok) showToast('Errore salvataggio','error');
     });
+  });
 }
 
 // ==================== ONBOARDING ====================
@@ -463,14 +500,14 @@ function switchObTab(tab) {
 }
 
 async function createGroup() {
-  const name  = document.getElementById('c-name').value.trim();
-  const gname = document.getElementById('c-gname').value.trim();
+  const name  = sanitizeName(document.getElementById('c-name').value);
+  const gname = sanitizeName(document.getElementById('c-gname').value);
   const err   = document.getElementById('c-err');
   if (!name)  { err.textContent='Inserisci il tuo nome';  err.classList.remove('hidden'); return; }
   if (!gname) { err.textContent='Inserisci il nome del gruppo'; err.classList.remove('hidden'); return; }
   err.classList.add('hidden');
   showObLoading(true);
-  const code = uid6();
+  const code = secureUid6();
   groupCode  = code;
   myName     = name;
   state.groupName = gname;
@@ -483,8 +520,8 @@ async function createGroup() {
 }
 
 async function joinGroup() {
-  const name = document.getElementById('j-name').value.trim();
-  const code = document.getElementById('j-code').value.trim().toUpperCase();
+  const name = sanitizeName(document.getElementById('j-name').value);
+  const code = document.getElementById('j-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
   const err  = document.getElementById('j-err');
   if (!name)         { err.textContent='Inserisci il tuo nome';     err.classList.remove('hidden'); return; }
   if (code.length!==6) { err.textContent='Codice non valido (6 caratteri)'; err.classList.remove('hidden'); return; }
@@ -576,7 +613,7 @@ function renderPresences() {
     const isAbsent = absentToday.includes(p.id);
     const div = document.createElement('div');
     div.className = 'person-chip ' + (isAbsent ? 'absent' : 'present');
-    div.innerHTML = `<div class="person-dot" style="background:${p.color}"></div>${p.name}`;
+    div.innerHTML = `<div class="person-dot" style="background:${escHtml(p.color)}"></div>${escHtml(p.name)}`;
     div.onclick = () => { toggleAbsent(p.id); };
     grid.appendChild(div);
   });
@@ -636,13 +673,13 @@ function renderCars() {
       if (p.id===car.driver) return;
       const isAss = assigned.has(p.id);
       const isSel = car.passengers.includes(p.id);
-      passHtml += `<div class="pass-chip ${isAss?'disabled':isSel?'selected':''}" onclick="togglePassenger('${car.id}','${p.id}')" style="${isSel?'border-color:'+p.color:''}">${p.name}</div>`;
+      passHtml += `<div class="pass-chip ${isAss?'disabled':isSel?'selected':''}" onclick="togglePassenger('${car.id}','${p.id}')" style="${isSel?'border-color:'+escHtml(p.color):''}">${escHtml(p.name)}</div>`;
     });
     const div = document.createElement('div');
     div.className = 'car-card';
     div.innerHTML = `
       <div class="car-header">
-        <div class="car-label">🚗 Auto ${idx+1} ${suggP?'<span class="suggest-badge">💡 '+suggP.name+'</span>':''}</div>
+        <div class="car-label">🚗 Auto ${idx+1} ${suggP?'<span class="suggest-badge">💡 '+escHtml(suggP.name)+'</span>':''}</div>
         ${todayCars.length>1?`<button class="btn btn-ghost btn-xs" onclick="removeCar('${car.id}')">✕</button>`:''}
       </div>
       <div class="driver-row">
@@ -695,9 +732,9 @@ function renderStorico() {
     const carsHtml = ride.cars.map(c=>{
       const drv=getPersonById(c.driver);
       const pass=c.passengers.map(pid=>getPersonById(pid)?.name||'?').join(', ');
-      return `<span style="color:${drv?.color||'var(--text)'}">${drv?.name||'?'}</span>${pass?' + '+pass:''}`;
+      const dColor=escHtml(drv?.color||'var(--text)');const dName=escHtml(drv?.name||'?');const passEsc=c.passengers.map(pid=>escHtml(getPersonById(pid)?.name||'?')).join(', ');return `<span style="color:${dColor}">${dName}</span>${passEsc?' + '+passEsc:''}`;
     }).join(' | ');
-    const absHtml = ride.absent?.length ? `<div class="text-muted" style="margin-top:3px">Assenti: ${ride.absent.map(pid=>getPersonById(pid)?.name||'?').join(', ')}</div>` : '';
+    const absHtml = ride.absent?.length ? `<div class="text-muted" style="margin-top:3px">Assenti: ${ride.absent.map(pid=>escHtml(getPersonById(pid)?.name||'?')).join(', ')}</div>` : '';
     // Contatori
     const nDrivers = ride.cars.filter(c=>c.driver).length;
     const nPass = ride.cars.reduce((acc,c)=>acc+c.passengers.length, 0);
@@ -882,9 +919,9 @@ function renderStatistiche() {
     const pct=s.present>0?Math.round(s.drives/s.present*100):0;
     const col=Math.abs(pct-fairAvg)<10?'#3ecf74':pct<fairAvg?'#4f8ef7':'#f75a5a';
     tHtml+=`<div class="person-stat-row">
-      <div class="psr-dot" style="background:${p.color}"></div>
+      <div class="psr-dot" style="background:${escHtml(p.color)}"></div>
       <div class="psr-name">
-        <div>${p.name}</div>
+        <div>${escHtml(p.name)}</div>
         <div style="font-size:0.68rem;color:var(--text2);font-weight:400">${s.drives} guide · ${s.present} presenze</div>
       </div>
       <div class="psr-bar-wrap"><div class="psr-bar" style="width:${Math.min(pct,100)}%;background:${col}"></div></div>
@@ -959,7 +996,7 @@ function buildLineChart(active) {
   legend.innerHTML = active.map(p=>`
     <div style="display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:600">
       <div style="width:18px;height:3px;border-radius:2px;background:${p.color}"></div>
-      ${p.name}
+      ${escHtml(p.name)}
     </div>`).join('');
 }
 
@@ -977,12 +1014,12 @@ function renderPersone() {
     row.innerHTML=`
       <div class="person-name" style="flex:1;min-width:0">
         <div onclick="toggleColorPicker('${p.id}')" style="width:14px;height:14px;border-radius:50%;background:${p.color};cursor:pointer;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;transition:transform 0.15s" title="Cambia colore"></div>
-        ${p.name}
+        ${escHtml(p.name)}
       </div>
       <button class="btn btn-xs btn-ghost" onclick="renamePerson('${p.id}')">✏</button>
       <button class="btn btn-xs" style="background:rgba(247,90,90,0.12);color:var(--red);border:1px solid rgba(247,90,90,0.3)" onclick="archivePerson('${p.id}')">Rimuovi</button>
       <div id="color-picker-${p.id}" class="color-picker-inline hidden" style="width:100%">
-        ${COLORS.map(c=>`<div class="color-swatch-sm${c===p.color?' selected':''}" style="background:${c}" onclick="changePersonColor('${p.id}','${c}')" title="${c}"></div>`).join('')}
+        ${COLORS.map(c=>`<div class="color-swatch-sm${c===p.color?' selected':''}" style="background:${escHtml(c)}" onclick="changePersonColor('${p.id}','${escHtml(c)}')" title="${escHtml(c)}"></div>`).join('')}
       </div>`;
     aList.appendChild(row);
   });
@@ -1013,7 +1050,7 @@ function renderColorPalette() {
 
 function addPerson() {
   const input=document.getElementById('new-person-name');
-  const name=input.value.trim();
+  const name=sanitizeName(input.value);
   if(!name){ showToast('Inserisci un nome','error'); return; }
   const ex=getPersonByName(name);
   if(ex&&ex.archived){ ex.archived=false; renderAll(); showToast(name+' ripristinato!'); input.value=''; pushState(); return; }
@@ -1036,7 +1073,7 @@ function renamePerson(id) {
   const p=getPersonById(id); if(!p)return;
   const newName=prompt('Nuovo nome per '+p.name+':', p.name);
   if(!newName||!newName.trim()) return;
-  const trimmed=newName.trim();
+  const trimmed=sanitizeName(newName);
   const existing=getPersonByName(trimmed);
   if(existing&&existing.id!==id){ showToast('Nome già esistente','error'); return; }
   p.name=trimmed; renderAll(); showToast('Rinominato!'); pushState();
@@ -1060,7 +1097,7 @@ function copyCode() { navigator.clipboard.writeText(groupCode).then(()=>showToas
 function renameGroup() {
   const n=prompt('Nuovo nome gruppo:',state.groupName);
   if(!n) return;
-  state.groupName=n.trim(); renderPersone(); pushState(); showToast('Rinominato!');
+  state.groupName=sanitizeName(n,60); renderPersone(); pushState(); showToast('Rinominato!');
 }
 function leaveGroup() {
   if(!confirm('Uscire dal gruppo? I dati locali verranno cancellati.')) return;
