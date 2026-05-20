@@ -708,10 +708,22 @@ function registraGiornata() {
     if (!confirm('Esiste già una giornata per oggi. Sovrascrivere?')) return;
     state.rides = state.rides.filter(r=>r.date!==d);
   }
+  // Calcola assenti automatici: presenti (non in absentToday) ma non in nessuna auto
+  const activePeople = getActivePeople();
+  const assigned = new Set();
+  todayCars.filter(c=>c.driver).forEach(c=>{
+    assigned.add(c.driver);
+    c.passengers.forEach(p=>assigned.add(p));
+  });
+  const autoAbsent = activePeople
+    .filter(p => !absentToday.includes(p.id) && !assigned.has(p.id))
+    .map(p => p.id);
+  const allAbsent = [...absentToday, ...autoAbsent];
+
   state.rides.push({
     date: d,
     cars: todayCars.filter(c=>c.driver).map(c=>({id:c.id,driver:c.driver,passengers:[...c.passengers]})),
-    absent: [...absentToday]
+    absent: allAbsent
   });
   state.rides.sort((a,b)=>b.date.localeCompare(a.date));
   initTodayState(); renderAll(); showToast('Giornata registrata!'); switchTab('storico'); pushState();
@@ -969,6 +981,30 @@ function buildLineChart(active) {
     return d+'/'+m;
   });
 
+  // Calcola media equa per ogni giornata (cumulativa)
+  let cumFairSum=0, cumFairCount=0;
+  const fairPts = sorted.map(ride=>{
+    const inR=new Set();
+    ride.cars.forEach(c=>{if(c.driver)inR.add(c.driver);c.passengers.forEach(x=>inR.add(x));});
+    const nP=inR.size, nC=ride.cars.filter(c=>c.driver).length;
+    if(nP>0){ cumFairSum+=nC/nP; cumFairCount++; }
+    return cumFairCount>0 ? Math.round(cumFairSum/cumFairCount*100) : null;
+  });
+
+  datasets.push({
+    label: 'Media equa',
+    data: fairPts,
+    borderColor: '#f7c948',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [6, 4],
+    pointRadius: 0,
+    pointHoverRadius: 0,
+    tension: 0.3,
+    spanGaps: true,
+    order: 0
+  });
+
   const ctx2 = document.getElementById('chart-line').getContext('2d');
   lineChart = new Chart(ctx2,{
     type:'line',
@@ -978,7 +1014,7 @@ function buildLineChart(active) {
       interaction:{ mode:'index', intersect:false },
       plugins:{
         legend:{ display:false },
-        tooltip:{ callbacks:{ label: c=>c.dataset.label+': '+c.parsed.y+'%' } }
+        tooltip:{ callbacks:{ label: c=>c.parsed.y!==null ? c.dataset.label+': '+c.parsed.y+'%' : '' } }
       },
       scales:{
         y:{
@@ -993,11 +1029,17 @@ function buildLineChart(active) {
 
   // Legenda manuale
   const legend = document.getElementById('line-legend');
-  legend.innerHTML = active.map(p=>`
+  const personItems = active.map(p=>`
     <div style="display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:600">
       <div style="width:18px;height:3px;border-radius:2px;background:${p.color}"></div>
       ${escHtml(p.name)}
     </div>`).join('');
+  const fairItem = `
+    <div style="display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:600">
+      <div style="width:18px;height:2px;border-top:2px dashed #f7c948"></div>
+      <span style="color:#f7c948">Media equa</span>
+    </div>`;
+  legend.innerHTML = personItems + fairItem;
 }
 
 // ==================== PERSONE ====================
