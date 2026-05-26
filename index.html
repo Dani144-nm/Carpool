@@ -159,7 +159,7 @@ input:focus,select:focus{border-color:var(--accent)}
 
 <!-- ONBOARDING -->
 <div id="onboarding">
-  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.1db</span></div>
+  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.2db</span></div>
   <div class="ob-sub">Gestione carpooling tra colleghi</div>
   <div class="ob-card">
     <div class="ob-tabs">
@@ -198,7 +198,7 @@ input:focus,select:focus{border-color:var(--accent)}
 <div id="app">
   <header class="app-header">
     <div class="header-logo">
-      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.1db</span>
+      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.2db</span>
       <span class="header-group" id="header-group-code"></span>
     </div>
     <div id="sync-badge" class="sync-badge sync-off" onclick="syncNow()" title="Sincronizza">
@@ -639,20 +639,27 @@ function getAssigned(excludeId) {
   return s;
 }
 
-function suggestDriver(excludeId) {
+function suggestDrivers(excludeId) {
   const active = getActivePeople().filter(p => !absentToday.includes(p.id));
   const assigned = getAssigned(excludeId);
   const avail = active.filter(p => !assigned.has(p.id));
-  if (!avail.length) return null;
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-90);
-  const cnt = {}; avail.forEach(p => cnt[p.id] = 0);
+  if (!avail.length) return [];
+  // Calcola drives e presenze per ogni persona disponibile
+  const drives  = {}; avail.forEach(p => drives[p.id]  = 0);
+  const present = {}; avail.forEach(p => present[p.id] = 0);
   state.rides.forEach(r => {
-    if (new Date(r.date)<cutoff) return;
-    r.cars.forEach(c => { if (c.driver && cnt[c.driver]!==undefined) cnt[c.driver]++; });
+    const inR = new Set();
+    r.cars.forEach(c => { if(c.driver) inR.add(c.driver); c.passengers.forEach(x=>inR.add(x)); });
+    avail.forEach(p => { if(inR.has(p.id)) present[p.id]++; });
+    r.cars.forEach(c => { if(c.driver && drives[c.driver]!==undefined) drives[c.driver]++; });
   });
-  let min=Infinity, sugg=null;
-  avail.forEach(p => { if (cnt[p.id]<min) { min=cnt[p.id]; sugg=p.id; } });
-  return sugg;
+  // Ordina per ratio guide/presenze crescente (chi ha guidato meno in proporzione)
+  const sorted = [...avail].sort((a, b) => {
+    const ratioA = present[a.id] > 0 ? drives[a.id] / present[a.id] : 0;
+    const ratioB = present[b.id] > 0 ? drives[b.id] / present[b.id] : 0;
+    return ratioA - ratioB;
+  });
+  return sorted.slice(0, 2).map(p => p.id);
 }
 
 function renderCars() {
@@ -660,9 +667,12 @@ function renderCars() {
   cont.innerHTML = '';
   const active = getActivePeople().filter(p => !absentToday.includes(p.id));
   todayCars.forEach((car,idx) => {
-    const sugg = suggestDriver(car.id);
+    const suggIds = suggestDrivers(car.id);
     const assigned = getAssigned(car.id);
-    const suggP = sugg ? getPersonById(sugg) : null;
+    const suggBadges = suggIds.map(id => {
+      const p = getPersonById(id);
+      return p ? `<span class="suggest-badge">💡 ${escHtml(p.name)}</span>` : '';
+    }).join(' ');
     let dOpts = '<option value="">— Seleziona —</option>';
     active.forEach(p => {
       if (assigned.has(p.id)) return;
@@ -679,7 +689,7 @@ function renderCars() {
     div.className = 'car-card';
     div.innerHTML = `
       <div class="car-header">
-        <div class="car-label">🚗 Auto ${idx+1} ${suggP?'<span class="suggest-badge">💡 '+escHtml(suggP.name)+'</span>':''}</div>
+        <div class="car-label">🚗 Auto ${idx+1} ${suggBadges}</div>
         ${todayCars.length>1?`<button class="btn btn-ghost btn-xs" onclick="removeCar('${car.id}')">✕</button>`:''}
       </div>
       <div class="driver-row">
