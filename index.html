@@ -153,13 +153,17 @@ input:focus,select:focus{border-color:var(--accent)}
 .text-muted{color:var(--text2);font-size:0.83rem}
 .divider{height:1px;background:var(--border);margin:10px 0}
 .hidden{display:none!important}
+.period-btn{padding:3px 9px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.72rem;font-weight:700;cursor:pointer;transition:all 0.15s}
+.period-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:0.78rem;font-weight:600;padding:4px 8px;border-radius:8px;cursor:pointer;border:1.5px solid transparent;transition:all 0.18s;color:var(--text)}
+.legend-item.hidden-series{opacity:0.35;border-color:var(--border)}
 </style>
 </head>
 <body>
 
 <!-- ONBOARDING -->
 <div id="onboarding">
-  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.2db</span></div>
+  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.3db</span></div>
   <div class="ob-sub">Gestione carpooling tra colleghi</div>
   <div class="ob-card">
     <div class="ob-tabs">
@@ -198,7 +202,7 @@ input:focus,select:focus{border-color:var(--accent)}
 <div id="app">
   <header class="app-header">
     <div class="header-logo">
-      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.2db</span>
+      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.3db</span>
       <span class="header-group" id="header-group-code"></span>
     </div>
     <div id="sync-badge" class="sync-badge sync-off" onclick="syncNow()" title="Sincronizza">
@@ -256,9 +260,17 @@ input:focus,select:focus{border-color:var(--accent)}
         <div class="mt-8 text-muted" id="fair-note"></div>
       </div>
       <div class="card">
-        <div class="card-title">📈 Andamento nel tempo</div>
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>📈 Andamento nel tempo</span>
+          <div style="display:flex;gap:4px" id="period-btns">
+            <button class="period-btn active" onclick="setPeriod(30)">30g</button>
+            <button class="period-btn" onclick="setPeriod(60)">60g</button>
+            <button class="period-btn" onclick="setPeriod(90)">90g</button>
+            <button class="period-btn" onclick="setPeriod(0)">Tutto</button>
+          </div>
+        </div>
         <div class="chart-wrap" style="height:240px"><canvas id="chart-line"></canvas></div>
-        <div id="line-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
+        <div id="line-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
       </div>
     </div>
 
@@ -379,6 +391,8 @@ let absentToday = [];
 let filterPerson = null;
 let barChart   = null;
 let lineChart  = null;
+let linePeriod = 30;          // giorni mostrati (0 = tutto)
+let hiddenSeries = new Set(); // label delle serie nascoste
 let editRideData = null;
 let editRideIndex = -1;
 let pastRideData = null;
@@ -838,7 +852,17 @@ function toggleEditPass(ci,pid){ const a=editRideData.cars[ci].passengers; const
 function removeEditCar(ci){ editRideData.cars.splice(ci,1); renderEditModal(); }
 function addEditCar(){ editRideData.cars.push({id:uid(),driver:'',passengers:[]}); renderEditModal(); }
 function toggleEditAbsent(pid){ if(!editRideData.absent)editRideData.absent=[]; const i=editRideData.absent.indexOf(pid); if(i>=0)editRideData.absent.splice(i,1);else editRideData.absent.push(pid); renderEditModal(); }
-function saveEditRide(){ state.rides[editRideIndex]=editRideData; renderAll(); closeModal('modal-edit'); showToast('Salvato!'); pushState(); }
+function saveEditRide(){
+  // Rimuovi dagli assenti chi è guidatore o passeggero in una delle auto
+  const assigned = new Set();
+  editRideData.cars.forEach(c=>{
+    if(c.driver) assigned.add(c.driver);
+    c.passengers.forEach(p=>assigned.add(p));
+  });
+  editRideData.absent = (editRideData.absent||[]).filter(pid=>!assigned.has(pid));
+  state.rides[editRideIndex]=editRideData;
+  renderAll(); closeModal('modal-edit'); showToast('Salvato!'); pushState();
+}
 
 function apriModalPassata() {
   const d = document.getElementById('past-date').value;
@@ -884,8 +908,13 @@ function addPastCar(){ pastRideData.cars.push({id:uid(),driver:'',passengers:[]}
 function togglePastAbsent(pid){ const i=pastRideData.absent.indexOf(pid); if(i>=0)pastRideData.absent.splice(i,1);else pastRideData.absent.push(pid); renderPastModal(); }
 function savePastRide(){
   if(!pastRideData.cars.some(c=>c.driver)){ showToast('Seleziona almeno un guidatore','error'); return; }
+  const validCars = pastRideData.cars.filter(c=>c.driver);
+  // Rimuovi dagli assenti chi è guidatore o passeggero
+  const assigned = new Set();
+  validCars.forEach(c=>{ assigned.add(c.driver); c.passengers.forEach(p=>assigned.add(p)); });
+  const cleanAbsent = (pastRideData.absent||[]).filter(pid=>!assigned.has(pid));
   state.rides=state.rides.filter(r=>r.date!==pastRideData.date);
-  state.rides.push({...pastRideData,cars:pastRideData.cars.filter(c=>c.driver)});
+  state.rides.push({...pastRideData, cars:validCars, absent:cleanAbsent});
   state.rides.sort((a,b)=>b.date.localeCompare(a.date));
   renderAll(); closeModal('modal-past'); showToast('Aggiunta!'); pushState();
 }
@@ -955,34 +984,90 @@ function renderStatistiche() {
   buildLineChart(active);
 }
 
+function setPeriod(days) {
+  linePeriod = days;
+  document.querySelectorAll('.period-btn').forEach(b => {
+    const d = parseInt(b.textContent) || 0;
+    b.classList.toggle('active', d === days || (b.textContent === 'Tutto' && days === 0));
+  });
+  buildLineChart(getActivePeople());
+}
+
+function toggleSeries(label) {
+  if (hiddenSeries.has(label)) hiddenSeries.delete(label);
+  else hiddenSeries.add(label);
+  // Aggiorna visibilità nel grafico
+  if (lineChart) {
+    lineChart.data.datasets.forEach((ds, i) => {
+      const meta = lineChart.getDatasetMeta(i);
+      meta.hidden = hiddenSeries.has(ds.label);
+    });
+    lineChart.update();
+  }
+  // Aggiorna stile legenda
+  document.querySelectorAll('.legend-item').forEach(el => {
+    el.classList.toggle('hidden-series', hiddenSeries.has(el.dataset.label));
+  });
+}
+
 function buildLineChart(active) {
   if(lineChart){lineChart.destroy();lineChart=null;}
   if(!state.rides.length||!active.length) return;
 
-  // Ordina le giornate cronologicamente
-  const sorted = [...state.rides].sort((a,b)=>a.date.localeCompare(b.date));
+  // Tutte le giornate ordinate
+  const all = [...state.rides].sort((a,b)=>a.date.localeCompare(b.date));
 
-  // Per ogni persona calcola la % cumulativa guida/presenze giornata per giornata
+  // Filtra per periodo (A)
+  let sorted = all;
+  if (linePeriod > 0) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - linePeriod);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    sorted = all.filter(r => r.date >= cutoffStr);
+  }
+  if (!sorted.length) return;
+
+  // Calcola % cumulativa su TUTTE le giornate (non solo quelle visibili)
+  // così il grafico mostra valori corretti anche su periodi brevi
+  const cumDrives  = {}; active.forEach(p=>cumDrives[p.id]=0);
+  const cumPresent = {}; active.forEach(p=>cumPresent[p.id]=0);
+  all.forEach(ride=>{
+    const inR=new Set();
+    ride.cars.forEach(c=>{if(c.driver)inR.add(c.driver);c.passengers.forEach(x=>inR.add(x));});
+    active.forEach(p=>{if(inR.has(p.id))cumPresent[p.id]++;});
+    ride.cars.forEach(c=>{if(c.driver&&cumDrives[c.driver]!==undefined)cumDrives[c.driver]++;});
+    // Marca se questa è l'ultima giornata prima del periodo visibile
+    if (ride === sorted[0]) {
+      // salva snapshot cumulativo pre-finestra
+      active.forEach(p=>{
+        p._snapDrives  = cumDrives[p.id];
+        p._snapPresent = cumPresent[p.id];
+      });
+    }
+  });
+
+  // Ricalcola incrementalmente solo nel periodo visibile
+  active.forEach(p=>{ p._d=0; p._pr=0; });
   const datasets = active.map(p => {
     let drives=0, present=0;
     const pts = sorted.map(ride=>{
       const inR=new Set();
       ride.cars.forEach(c=>{if(c.driver)inR.add(c.driver);c.passengers.forEach(x=>inR.add(x));});
       if(inR.has(p.id)) present++;
-      const drove = ride.cars.some(c=>c.driver===p.id);
-      if(drove) drives++;
+      if(ride.cars.some(c=>c.driver===p.id)) drives++;
       return present>0 ? Math.round(drives/present*100) : null;
     });
     return {
       label: p.name,
       data: pts,
       borderColor: p.color,
-      backgroundColor: p.color + '22',
-      borderWidth: 2,
-      pointRadius: sorted.length>30?0:3,
+      backgroundColor: p.color + '18',
+      borderWidth: 2.5,
+      pointRadius: sorted.length > 20 ? 0 : 3,
       pointHoverRadius: 5,
-      tension: 0.3,
-      spanGaps: true
+      tension: 0.35,
+      spanGaps: true,
+      hidden: hiddenSeries.has(p.name)
     };
   });
 
@@ -991,16 +1076,15 @@ function buildLineChart(active) {
     return d+'/'+m;
   });
 
-  // Calcola media equa per ogni giornata (cumulativa)
-  let cumFairSum=0, cumFairCount=0;
+  // Media equa cumulativa nel periodo visibile
+  let cumFS=0, cumFC=0;
   const fairPts = sorted.map(ride=>{
     const inR=new Set();
     ride.cars.forEach(c=>{if(c.driver)inR.add(c.driver);c.passengers.forEach(x=>inR.add(x));});
     const nP=inR.size, nC=ride.cars.filter(c=>c.driver).length;
-    if(nP>0){ cumFairSum+=nC/nP; cumFairCount++; }
-    return cumFairCount>0 ? Math.round(cumFairSum/cumFairCount*100) : null;
+    if(nP>0){cumFS+=nC/nP;cumFC++;}
+    return cumFC>0 ? Math.round(cumFS/cumFC*100) : null;
   });
-
   datasets.push({
     label: 'Media equa',
     data: fairPts,
@@ -1012,7 +1096,8 @@ function buildLineChart(active) {
     pointHoverRadius: 0,
     tension: 0.3,
     spanGaps: true,
-    order: 0
+    order: 0,
+    hidden: hiddenSeries.has('Media equa')
   });
 
   const ctx2 = document.getElementById('chart-line').getContext('2d');
@@ -1024,31 +1109,47 @@ function buildLineChart(active) {
       interaction:{ mode:'index', intersect:false },
       plugins:{
         legend:{ display:false },
-        tooltip:{ callbacks:{ label: c=>c.parsed.y!==null ? c.dataset.label+': '+c.parsed.y+'%' : '' } }
+        tooltip:{
+          callbacks:{
+            label: c => c.parsed.y !== null ? c.dataset.label+': '+c.parsed.y+'%' : '',
+            filter: c => c.parsed.y !== null
+          },
+          backgroundColor: 'rgba(22,25,34,0.95)',
+          borderColor: '#2a2f3e',
+          borderWidth: 1,
+          titleColor: '#e8eaf0',
+          bodyColor: '#8b92a8',
+          padding: 10
+        }
       },
       scales:{
         y:{
           min:0, max:100,
           ticks:{callback:v=>v+'%',color:'#8b92a8'},
-          grid:{color:'rgba(42,47,62,0.8)'}
+          grid:{color:'rgba(42,47,62,0.6)'}
         },
-        x:{ ticks:{color:'#8b92a8',maxRotation:45,maxTicksLimit:12}, grid:{display:false} }
+        x:{
+          ticks:{color:'#8b92a8',maxRotation:45,maxTicksLimit: linePeriod===30?10:linePeriod===60?12:15},
+          grid:{display:false}
+        }
       }
     }
   });
 
-  // Legenda manuale
+  // Legenda interattiva (E) — cliccabile per mostrare/nascondere serie
   const legend = document.getElementById('line-legend');
-  const personItems = active.map(p=>`
-    <div style="display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:600">
-      <div style="width:18px;height:3px;border-radius:2px;background:${p.color}"></div>
+  const personItems = active.map(p=>{
+    const isHidden = hiddenSeries.has(p.name);
+    return `<div class="legend-item ${isHidden?'hidden-series':''}" data-label="${escHtml(p.name)}" onclick="toggleSeries('${escHtml(p.name)}')" title="Clicca per mostrare/nascondere">
+      <div style="width:18px;height:3px;border-radius:2px;background:${escHtml(p.color)}"></div>
       ${escHtml(p.name)}
-    </div>`).join('');
-  const fairItem = `
-    <div style="display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:600">
-      <div style="width:18px;height:2px;border-top:2px dashed #f7c948"></div>
-      <span style="color:#f7c948">Media equa</span>
     </div>`;
+  }).join('');
+  const fairHidden = hiddenSeries.has('Media equa');
+  const fairItem = `<div class="legend-item ${fairHidden?'hidden-series':''}" data-label="Media equa" onclick="toggleSeries('Media equa')" title="Clicca per mostrare/nascondere">
+    <div style="width:18px;height:2px;border-top:2px dashed #f7c948"></div>
+    <span style="color:#f7c948">Media equa</span>
+  </div>`;
   legend.innerHTML = personItems + fairItem;
 }
 
