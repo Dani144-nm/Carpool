@@ -157,32 +157,13 @@ input:focus,select:focus{border-color:var(--accent)}
 .period-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .legend-item{display:flex;align-items:center;gap:6px;font-size:0.78rem;font-weight:600;padding:4px 8px;border-radius:8px;cursor:pointer;border:1.5px solid transparent;transition:all 0.18s;color:var(--text)}
 .legend-item.hidden-series{opacity:0.35;border-color:var(--border)}
-/* PRENOTAZIONI */
-.pren-table{width:100%;border-collapse:collapse;font-size:0.78rem}
-.pren-table th{background:var(--surface2);color:var(--text2);font-weight:700;padding:6px 4px;text-align:center;border:1px solid var(--border);font-size:0.72rem;position:sticky;top:0;z-index:2}
-.pren-table th.col-name{text-align:left;padding-left:10px;min-width:90px;position:sticky;top:0;left:0;z-index:3;background:var(--surface2)}
-.pren-table td{padding:4px 3px;text-align:center;border:1px solid var(--border);vertical-align:middle}
-.pren-table td.col-name{text-align:left;padding-left:10px;font-weight:600;background:var(--surface);position:sticky;left:0;z-index:1;white-space:nowrap}
-.pren-table tr:hover td{background:rgba(79,142,247,0.04)}
-.pren-table tr:hover td.col-name{background:var(--surface)}
-.pren-weekend th,.pren-weekend td{background:rgba(42,47,62,0.5)!important;color:var(--text2)}
-.pren-btn{width:32px;height:28px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:0.85rem;transition:all 0.15s;display:inline-flex;align-items:center;justify-content:center}
-.pren-btn.presente{background:rgba(62,207,116,0.18);border-color:var(--green);color:var(--green)}
-.pren-btn.assente{background:rgba(247,90,90,0.12);border-color:var(--red);color:var(--red);opacity:0.7}
-.pren-btn.nd{background:var(--surface2);border-color:var(--border);color:var(--text2)}
-.pren-scroll{overflow-x:auto;border-radius:var(--radius-sm);border:1px solid var(--border)}
-.pren-day-hdr{display:flex;flex-direction:column;gap:1px;align-items:center}
-.pren-day-name{font-size:0.65rem;text-transform:uppercase;color:var(--text2)}
-.pren-day-num{font-size:0.8rem;font-weight:700;color:var(--text)}
-.pren-summary{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.pren-sum-item{font-size:0.72rem;padding:3px 8px;border-radius:10px;font-weight:600;background:var(--surface2);border:1px solid var(--border)}
 </style>
 </head>
 <body>
 
 <!-- ONBOARDING -->
 <div id="onboarding">
-  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.4db</span></div>
+  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.3db</span></div>
   <div class="ob-sub">Gestione carpooling tra colleghi</div>
   <div class="ob-card">
     <div class="ob-tabs">
@@ -221,7 +202,7 @@ input:focus,select:focus{border-color:var(--accent)}
 <div id="app">
   <header class="app-header">
     <div class="header-logo">
-      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.4db</span>
+      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.3db</span>
       <span class="header-group" id="header-group-code"></span>
     </div>
     <div id="sync-badge" class="sync-badge sync-off" onclick="syncNow()" title="Sincronizza">
@@ -231,7 +212,6 @@ input:focus,select:focus{border-color:var(--accent)}
   <nav class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('oggi')">🚗 Oggi</button>
     <button class="tab-btn" onclick="switchTab('storico')">📋 Storico</button>
-    <button class="tab-btn" onclick="switchTab('prenotazioni')">📅 Prenot.</button>
     <button class="tab-btn" onclick="switchTab('statistiche')">📊 Statistiche</button>
     <button class="tab-btn" onclick="switchTab('persone')">👥 Persone</button>
   </nav>
@@ -270,25 +250,6 @@ input:focus,select:focus{border-color:var(--accent)}
     </div>
 
     <!-- STATISTICHE -->
-    <!-- PRENOTAZIONI -->
-    <div id="tab-prenotazioni" class="tab-panel">
-      <div class="card">
-        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>📅 Prenotazioni — prossimi 15 giorni feriali</span>
-        </div>
-        <div class="text-muted mb-8" style="font-size:0.78rem">Clicca sulla tua riga per indicare presenza o assenza. Le prenotazioni degli altri sono in sola lettura.</div>
-        <div class="pren-summary" id="pren-summary"></div>
-        <div class="pren-scroll">
-          <table class="pren-table" id="pren-table"></table>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Chi sono io?</div>
-        <div class="text-muted mb-8" style="font-size:0.8rem">Seleziona il tuo nome per modificare le tue prenotazioni</div>
-        <div id="pren-me-selector" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-      </div>
-    </div>
-
     <div id="tab-statistiche" class="tab-panel">
       <div class="stats-grid" id="stats-overview"></div>
       <div class="card">
@@ -531,7 +492,7 @@ function syncNow() {
 function pushState() {
   saveLocal();
   if (!SUPABASE_URL || !SUPABASE_KEY) return;
-  const payload = { people: state.people, rides: state.rides, groupName: state.groupName, bookings: state.bookings||{} };
+  const payload = { people: state.people, rides: state.rides, groupName: state.groupName };
   if (!validatePayload(payload)) return;
   rateLimitedSave(() => {
     if (isSaving) return;
@@ -630,9 +591,6 @@ function startApp() {
   document.getElementById('app').style.display = 'flex';
   document.getElementById('header-group-code').textContent = groupCode;
   initTodayState();
-  // Recupera "chi sono io" salvato
-  const savedMe = localStorage.getItem('cp_me_'+groupCode);
-  if (savedMe && state.people.find(p=>p.id===savedMe&&!p.archived)) myPersonId = savedMe;
   renderAll();
   // Sync in background
   if (SUPABASE_URL && SUPABASE_KEY) {
@@ -642,7 +600,6 @@ function startApp() {
         state.people    = data.people    || state.people;
         state.rides     = data.rides     || state.rides;
         state.groupName = data.groupName || state.groupName;
-        state.bookings  = data.bookings  || state.bookings || {};
         state.rides.sort((a,b) => b.date.localeCompare(a.date));
         saveLocal(); renderAll();
         setSyncStatus('ok','Sync ✓');
@@ -1346,132 +1303,13 @@ function importCSV(ev) {
 function renderAll() {
   renderPresences(); renderCars(); renderStorico(); renderPersone();
   if(document.getElementById('tab-statistiche').classList.contains('active')) renderStatistiche();
-  if(document.getElementById('tab-prenotazioni').classList.contains('active')) renderPrenotazioni();
 }
 function switchTab(tab) {
-  const tabs=['oggi','storico','prenotazioni','statistiche','persone'];
+  const tabs=['oggi','storico','statistiche','persone'];
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('.tab-panel').forEach((p,i)=>p.classList.toggle('active','tab-'+tabs[i]==='tab-'+tab));
   if(tab==='statistiche')setTimeout(renderStatistiche,50);
   if(tab==='storico')renderStorico();
-  if(tab==='prenotazioni')renderPrenotazioni();
-}
-
-// ==================== PRENOTAZIONI ====================
-// state.bookings = { "2026-06-10": { "personId": "presente"|"assente"|"nd" } }
-let myPersonId = null; // persona selezionata da "Chi sono io?"
-
-function getWorkdays() {
-  const days = [];
-  const d = new Date();
-  d.setHours(0,0,0,0);
-  while (days.length < 15) {
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) { // solo lun-ven
-      days.push(d.toISOString().split('T')[0]);
-    }
-    d.setDate(d.getDate() + 1);
-  }
-  return days;
-}
-
-function getBooking(date, personId) {
-  if (!state.bookings) return 'nd';
-  return (state.bookings[date] && state.bookings[date][personId]) || 'nd';
-}
-
-function setBooking(date, personId, value) {
-  if (!state.bookings) state.bookings = {};
-  if (!state.bookings[date]) state.bookings[date] = {};
-  state.bookings[date][personId] = value;
-}
-
-function cycleBooking(date, personId) {
-  if (personId !== myPersonId) return; // sola lettura altrui
-  const cur = getBooking(date, personId);
-  const next = cur === 'nd' ? 'presente' : cur === 'presente' ? 'assente' : 'nd';
-  setBooking(date, personId, next);
-  pushState();
-  renderPrenotazioni();
-}
-
-function renderPrenotazioni() {
-  if (!state.bookings) state.bookings = {};
-  const active = getActivePeople();
-  const days = getWorkdays();
-  const dayNames = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
-  const monthNames = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-
-  // Selector "Chi sono io?"
-  const sel = document.getElementById('pren-me-selector');
-  sel.innerHTML = active.map(p => `
-    <div onclick="selectMe('${p.id}')"
-      style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:2px solid ${myPersonId===p.id?p.color:'var(--border)'};background:${myPersonId===p.id?'rgba(79,142,247,0.1)':'var(--surface2)'};cursor:pointer;font-size:0.83rem;font-weight:600;transition:all 0.15s">
-      <div style="width:9px;height:9px;border-radius:50%;background:${escHtml(p.color)}"></div>
-      ${escHtml(p.name)}
-      ${myPersonId===p.id?'<span style="font-size:0.7rem;color:var(--accent)">✓ sei tu</span>':''}
-    </div>`).join('');
-
-  // Summary: conta presenti per giorno
-  const summary = document.getElementById('pren-summary');
-  summary.innerHTML = days.map(date => {
-    const presenti = active.filter(p => getBooking(date, p.id) === 'presente').length;
-    const assenti  = active.filter(p => getBooking(date, p.id) === 'assente').length;
-    if (presenti === 0 && assenti === 0) return '';
-    const [y,m,d] = date.split('-');
-    return `<div class="pren-sum-item">
-      <span style="font-weight:700">${dayNames[new Date(parseInt(y),parseInt(m)-1,parseInt(d)).getDay()]} ${d}/${m}</span>
-      <span style="color:var(--green);margin-left:4px">✓${presenti}</span>
-      ${assenti>0?`<span style="color:var(--red);margin-left:2px">✗${assenti}</span>`:''}
-    </div>`;
-  }).join('');
-
-  // Tabella
-  const table = document.getElementById('pren-table');
-  let html = '<thead><tr><th class="col-name">Persona</th>';
-  days.forEach(date => {
-    const [y,m,d] = date.split('-');
-    const dt = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-    html += `<th><div class="pren-day-hdr">
-      <span class="pren-day-name">${dayNames[dt.getDay()]}</span>
-      <span class="pren-day-num">${d}/${m}</span>
-    </div></th>`;
-  });
-  html += '</tr></thead><tbody>';
-
-  active.forEach(p => {
-    const isMe = p.id === myPersonId;
-    html += `<tr>
-      <td class="col-name">
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="width:8px;height:8px;border-radius:50%;background:${escHtml(p.color)};flex-shrink:0"></div>
-          ${escHtml(p.name)}
-          ${isMe?'<span style="font-size:0.65rem;color:var(--accent);font-weight:700">tu</span>':''}
-        </div>
-      </td>`;
-    days.forEach(date => {
-      const val = getBooking(date, p.id);
-      const icon = val === 'presente' ? '✓' : val === 'assente' ? '✗' : '·';
-      const cls  = `pren-btn ${val}`;
-      const clickable = isMe ? `onclick="cycleBooking('${date}','${p.id}')" title="Clicca per cambiare"` : `title="${escHtml(p.name)}: ${val}"`;
-      html += `<td><button class="${cls}" ${clickable} style="${isMe?'':'cursor:default'}">${icon}</button></td>`;
-    });
-    html += '</tr>';
-  });
-
-  if (!active.length) {
-    html += `<tr><td colspan="${days.length+1}" style="text-align:center;padding:16px;color:var(--text2)">Aggiungi persone nel tab Persone</td></tr>`;
-  }
-  html += '</tbody>';
-  table.innerHTML = html;
-}
-
-function selectMe(personId) {
-  myPersonId = myPersonId === personId ? null : personId;
-  // Salva in localStorage per ricordare la scelta
-  if (myPersonId) localStorage.setItem('cp_me_'+groupCode, myPersonId);
-  else localStorage.removeItem('cp_me_'+groupCode);
-  renderPrenotazioni();
 }
 
 // ==================== PWA ====================
