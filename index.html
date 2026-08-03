@@ -182,7 +182,7 @@ input:focus,select:focus{border-color:var(--accent)}
 
 <!-- ONBOARDING -->
 <div id="onboarding">
-  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.4db</span></div>
+  <div class="ob-logo">Car<span>Pool</span> <span style="font-size:0.7rem;color:var(--text2);font-weight:400">v1.5db</span></div>
   <div class="ob-sub">Gestione carpooling tra colleghi</div>
   <div class="ob-card">
     <div class="ob-tabs">
@@ -221,7 +221,7 @@ input:focus,select:focus{border-color:var(--accent)}
 <div id="app">
   <header class="app-header">
     <div class="header-logo">
-      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.4db</span>
+      Car<span>Pool</span> <span style="font-size:0.65rem;color:var(--text2);font-weight:400">v1.5db</span>
       <span class="header-group" id="header-group-code"></span>
     </div>
     <div id="sync-badge" class="sync-badge sync-off" onclick="syncNow()" title="Sincronizza">
@@ -302,9 +302,8 @@ input:focus,select:focus{border-color:var(--accent)}
         <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
           <span>📈 Andamento nel tempo</span>
           <div style="display:flex;gap:4px" id="period-btns">
-            <button class="period-btn active" onclick="setPeriod(30)">30g</button>
-            <button class="period-btn" onclick="setPeriod(60)">60g</button>
-            <button class="period-btn" onclick="setPeriod(90)">90g</button>
+            <button class="period-btn active" onclick="setPeriod(15)">15g</button>
+            <button class="period-btn" onclick="setPeriod(30)">30g</button>
             <button class="period-btn" onclick="setPeriod(0)">Tutto</button>
           </div>
         </div>
@@ -430,7 +429,7 @@ let absentToday = [];
 let filterPerson = null;
 let barChart   = null;
 let lineChart  = null;
-let linePeriod = 30;          // giorni mostrati (0 = tutto)
+let linePeriod = 15;          // giorni mostrati (0 = tutto)
 let hiddenSeries = new Set(); // label delle serie nascoste
 let editRideData = null;
 let editRideIndex = -1;
@@ -989,9 +988,24 @@ function renderStatistiche() {
     if(nP>0){tf+=nC/nP;cf++;}
   });
   const fairAvg=cf>0?tf/cf*100:0;
-  const labels=active.map(p=>p.name);
-  const data=active.map(p=>{const s=stats[p.id];return s.present>0?Math.round(s.drives/s.present*100):0;});
-  const colors=active.map(p=>{const pct=stats[p.id].present>0?stats[p.id].drives/stats[p.id].present*100:0;return Math.abs(pct-fairAvg)<10?'#3ecf74':pct<fairAvg?'#4f8ef7':'#f75a5a';});
+  // Ordina per % crescente (dal più basso al più alto)
+  const sorted = [...active].sort((a,b)=>{
+    const pA = stats[a.id].present>0 ? stats[a.id].drives/stats[a.id].present : 0;
+    const pB = stats[b.id].present>0 ? stats[b.id].drives/stats[b.id].present : 0;
+    return pA - pB;
+  });
+
+  // Le 4 persone con % più bassa ricevono colore rosso nel grafico
+  const bottom4ids = new Set(sorted.slice(0,4).map(p=>p.id));
+
+  const labels = sorted.map(p=>p.name);
+  const data   = sorted.map(p=>{const s=stats[p.id];return s.present>0?Math.round(s.drives/s.present*100):0;});
+  const colors = sorted.map(p=>{
+    if(bottom4ids.has(p.id)) return '#f75a5a';
+    const pct=stats[p.id].present>0?stats[p.id].drives/stats[p.id].present*100:0;
+    return Math.abs(pct-fairAvg)<10?'#3ecf74':pct<fairAvg?'#4f8ef7':'#f75a5a';
+  });
+
   if(barChart){barChart.destroy();barChart=null;}
   const maxVal=Math.max(...data,fairAvg,10);
   const ctx=document.getElementById('chart-bar').getContext('2d');
@@ -1007,11 +1021,14 @@ function renderStatistiche() {
       ctx.beginPath();ctx.moveTo(chartArea.left,y);ctx.lineTo(chartArea.right,y);ctx.stroke();ctx.restore();
     }}]
   });
+
+  // Tabella in ordine % crescente, bottom 4 in rosso
   let tHtml='';
-  active.forEach(p=>{
+  sorted.forEach((p,rank)=>{
     const s=stats[p.id];
     const pct=s.present>0?Math.round(s.drives/s.present*100):0;
-    const col=Math.abs(pct-fairAvg)<10?'#3ecf74':pct<fairAvg?'#4f8ef7':'#f75a5a';
+    const isBottom4 = bottom4ids.has(p.id);
+    const col = isBottom4 ? '#f75a5a' : (Math.abs(pct-fairAvg)<10?'#3ecf74':pct<fairAvg?'#4f8ef7':'#f75a5a');
     tHtml+=`<div class="person-stat-row">
       <div class="psr-dot" style="background:${escHtml(p.color)}"></div>
       <div class="psr-name">
@@ -1030,8 +1047,9 @@ function renderStatistiche() {
 function setPeriod(days) {
   linePeriod = days;
   document.querySelectorAll('.period-btn').forEach(b => {
-    const d = parseInt(b.textContent) || 0;
-    b.classList.toggle('active', d === days || (b.textContent === 'Tutto' && days === 0));
+    const txt = b.textContent.trim();
+    const d = parseInt(txt) || 0;
+    b.classList.toggle('active', d === days || (txt === 'Tutto' && days === 0));
   });
   buildLineChart(getActivePeople());
 }
@@ -1172,7 +1190,7 @@ function buildLineChart(active) {
           grid:{color:'rgba(42,47,62,0.6)'}
         },
         x:{
-          ticks:{color:'#8b92a8',maxRotation:45,maxTicksLimit: linePeriod===30?10:linePeriod===60?12:15},
+          ticks:{color:'#8b92a8',maxRotation:45,maxTicksLimit: linePeriod===15?10:linePeriod===30?12:15},
           grid:{display:false}
         }
       }
